@@ -316,3 +316,75 @@ def test_cp_generation(
         method="generate",
         is_multimodal=False,
     )
+
+
+@pytest.mark.skipif(
+    not current_platform.is_device_capability_family(90),
+    reason="The FP8 KV d512 fallback targets Hopper",
+)
+@pytest.mark.distributed(num_gpus=2)
+def test_sm90_fp8_dcp_cached_context(vllm_runner, tmp_path):
+    """Chunked prefill must combine non-causal cached context with causal queries."""
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import LlamaConfig, LlamaForCausalLM, TokenizersBackend
+
+    from tests.models.utils import check_logprobs_close
+
+    # A real, small checkpoint with d512 and one KV head allows TP2/DCP2.
+    # Gemma-4 has too many KV heads to exercise DCP with just two GPUs.
+    model_dir = tmp_path / "llama-d512-mqa"
+    torch.manual_seed(0)
+    config = LlamaConfig(
+        vocab_size=128,
+        hidden_size=1024,
+        intermediate_size=2048,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=512,
+        max_position_embeddings=2048,
+        eos_token_id=None,
+    )
+    model = LlamaForCausalLM(config).to(torch.bfloat16)
+    model.save_pretrained(model_dir)
+    del model
+    tokenizer = Tokenizer(WordLevel({f"t{i}": i for i in range(128)}, unk_token="t0"))
+    tokenizer.pre_tokenizer = Whitespace()
+    TokenizersBackend(tokenizer_object=tokenizer, unk_token="t0").save_pretrained(
+        model_dir
+    )
+    prompts = [
+        " ".join(f"t{(i + j) % 127 + 1}" for i in range(n))
+        for j, n in enumerate((257, 513, 1025))
+    ]
+    outputs = []
+    for dcp in (1, 2):
+        with vllm_runner(
+            str(model_dir),
+            dtype="bfloat16",
+            tensor_parallel_size=2,
+            decode_context_parallel_size=dcp,
+            distributed_executor_backend="mp",
+            kv_cache_dtype="fp8",
+            block_size=64,
+            max_model_len=2048,
+            max_num_seqs=4,
+            max_num_batched_tokens=128,
+            enable_chunked_prefill=True,
+            enforce_eager=True,
+            gpu_memory_utilization=0.3,
+            attention_config={"backend": "FLASH_ATTN"},
+            seed=0,
+        ) as runner:
+            outputs.append(
+                runner.generate_greedy_logprobs(prompts, max_tokens=16, num_logprobs=5)
+            )
+    check_logprobs_close(
+        outputs_0_lst=outputs[0],
+        outputs_1_lst=outputs[1],
+        name_0="FP8 KV TP2",
+        name_1="FP8 KV TP2/DCP2",
+        always_check_logprobs=True,
+    )

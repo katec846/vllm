@@ -133,16 +133,12 @@ def test_fp8_kv_rejected(capability, head_size, fa_version):
 
 
 @pytest.mark.parametrize(
-    "head_size,kv_cache_dtype,rejected",
-    [(512, "fp8", True), (512, "auto", False), (256, "fp8", False)],
+    "head_size,kv_cache_dtype",
+    [(512, "fp8"), (512, "auto"), (256, "fp8")],
 )
-def test_sm90_fp8_mma_rejects_dcp(head_size, kv_cache_dtype, rejected):
+def test_sm90_fp8_kv_supports_dcp(head_size, kv_cache_dtype):
     with _device(SM90, head_size=head_size, kv_cache_dtype=kv_cache_dtype, dcp=2):
-        if rejected:
-            with pytest.raises(NotImplementedError, match="context parallelism"):
-                _impl(head_size, kv_cache_dtype)
-        else:
-            assert _impl(head_size, kv_cache_dtype).dcp_world_size == 2
+        assert _impl(head_size, kv_cache_dtype).dcp_world_size == 2
 
 
 @pytest.mark.parametrize(
@@ -152,7 +148,6 @@ def test_sm90_fp8_mma_rejects_dcp(head_size, kv_cache_dtype, rejected):
         (256, torch.float8_e4m3fn, True, "q=torch.float8_e4m3fn/256"),
         (128, torch.float8_e4m3fn, False, "head_size=512"),
         (256, torch.bfloat16, True, "q=torch.bfloat16/256"),
-        (512, torch.bfloat16, False, "noncausal"),
     ],
 )
 def test_wrapper_rejects_unsupported_sm90_fp8(head_size, q_dtype, causal, match):

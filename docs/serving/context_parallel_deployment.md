@@ -54,3 +54,11 @@ Decode context parallel is supported in vLLM, for both MLA and GQA models. Some 
 ## Technical Discussions
 
 The main discussions happen in the `#sig-context-parallel` channel of [vLLM Slack](https://slack.vllm.ai/).
+
+### Hopper FP8 KV cache with head dimension 512
+
+FlashAttention uses FP8 MMA for causal/local attention and dequantizes FP8 K/V
+inside the kernel for non-causal full attention, which uses FP16 MMA. DCP's
+cached-context attention uses the latter path; the cache remains FP8 in both
+cases. Select `--attention-backend FLASH_ATTN --kv-cache-dtype fp8` and a
+64-token physical block size. The usual TP/DCP constraints above still apply.

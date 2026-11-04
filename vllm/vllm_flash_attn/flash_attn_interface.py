@@ -336,10 +336,6 @@ def flash_attn_varlen_func(
                 f"q={q.dtype}/{q.shape[-1]}, k={k.dtype}/{k.shape[-1]}, "
                 f"v={v.dtype}/{v.shape[-1]} (dtype/head_size); use fa_version=3."
             )
-        if not causal and real_window_size[0] < 0 and real_window_size[1] < 0:
-            raise NotImplementedError(
-                "SM90 FP8 MMA noncausal full attention has known accuracy errors."
-            )
 
     assert output_scale is None or fa_version == 4, (
         f"Fused FP8 output (output_scale) is only supported by FA4, "
