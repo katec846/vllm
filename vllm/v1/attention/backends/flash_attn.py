@@ -1613,6 +1613,10 @@ class FlashAttentionImpl(AttentionImpl):
             get_dcp_group(),
             return_lse=True,
         )
+        if self.num_heads == 1:
+            # A transposed singleton head can retain a noncanonical stride even
+            # when contiguous; merge_attn_states derives token stride from it.
+            context_attn_out_cor = context_attn_out_cor.squeeze(1).unsqueeze(1)
         context_lse_cor = context_lse_cor.transpose(0, 1).contiguous()
 
         query_attn_out, query_lse = flash_attn_varlen_func(
