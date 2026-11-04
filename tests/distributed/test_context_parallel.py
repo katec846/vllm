@@ -323,7 +323,8 @@ def test_cp_generation(
     reason="The FP8 KV d512 fallback targets Hopper",
 )
 @pytest.mark.distributed(num_gpus=2)
-def test_sm90_fp8_dcp_cached_context(vllm_runner, tmp_path):
+@pytest.mark.parametrize("enforce_eager", [True, False])
+def test_sm90_fp8_dcp_cached_context(vllm_runner, tmp_path, enforce_eager):
     """Chunked prefill must combine non-causal cached context with causal queries."""
     from tokenizers import Tokenizer
     from tokenizers.models import WordLevel
@@ -373,7 +374,7 @@ def test_sm90_fp8_dcp_cached_context(vllm_runner, tmp_path):
             max_num_seqs=4,
             max_num_batched_tokens=128,
             enable_chunked_prefill=True,
-            enforce_eager=True,
+            enforce_eager=enforce_eager,
             gpu_memory_utilization=0.3,
             attention_config={"backend": "FLASH_ATTN"},
             seed=0,
